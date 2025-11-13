@@ -1,4 +1,3 @@
-import { resolveShortLink } from '@/lib/shortener';
 import { redirect } from 'next/navigation';
 
 interface ShortLinkPageProps {
@@ -8,13 +7,11 @@ interface ShortLinkPageProps {
 export default async function ShortLinkPage({ params }: ShortLinkPageProps) {
   const { shortId } = await params;
   
-  const originalUrl = resolveShortLink(shortId);
+  // For MVP, since we can't persist storage between deployments,
+  // let's redirect back to home with an error message
+  // In production, this would lookup the shortId in a database
   
-  if (!originalUrl) {
-    redirect('/');
-  }
-
-  // Redirect to the view page with the original URL
-  const encodedUrl = encodeURIComponent(originalUrl);
-  redirect(`/view?u=${encodedUrl}`);
+  // For now, just redirect to homepage
+  // TODO: Implement proper database storage for short links
+  redirect('/?error=short-link-expired');
 }

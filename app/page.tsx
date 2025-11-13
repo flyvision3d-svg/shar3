@@ -9,31 +9,11 @@ export default function Home() {
   const handleGenerate = async () => {
     if (!imageUrl.trim()) return;
     
-    try {
-      const response = await fetch('/api/shorten', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ url: imageUrl }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setGeneratedUrl(data.shortUrl);
-      } else {
-        // Fallback to long URL if shortener fails
-        const encodedUrl = encodeURIComponent(imageUrl);
-        const shar3Url = `${window.location.origin}/view?u=${encodedUrl}`;
-        setGeneratedUrl(shar3Url);
-      }
-    } catch (error) {
-      console.error('Error generating short link:', error);
-      // Fallback to long URL
-      const encodedUrl = encodeURIComponent(imageUrl);
-      const shar3Url = `${window.location.origin}/view?u=${encodedUrl}`;
-      setGeneratedUrl(shar3Url);
-    }
+    // For MVP, use the direct approach without short links
+    // Short links require database storage which we'll add later
+    const encodedUrl = encodeURIComponent(imageUrl);
+    const shar3Url = `${window.location.origin}/view?u=${encodedUrl}`;
+    setGeneratedUrl(shar3Url);
   };
 
   const copyToClipboard = async () => {
