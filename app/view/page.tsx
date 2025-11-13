@@ -18,6 +18,11 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
 
   const decodedUrl = decodeURIComponent(imageUrl);
   
+  // For Jackal Vault URLs, use our proxy to serve the raw image
+  const ogImageUrl = decodedUrl.includes('vault.jackalprotocol.com') 
+    ? `/api/proxy-image?url=${encodeURIComponent(decodedUrl)}`
+    : decodedUrl;
+  
   return {
     title: "Shar3 - Decentralized Image Share",
     description: "Image shared via Shar3 decentralized preview wrapper",
@@ -26,7 +31,7 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
       description: "Decentralized image sharing with instant previews",
       images: [
         {
-          url: decodedUrl,
+          url: ogImageUrl,
           width: 1200,
           height: 630,
           alt: "Shared image",
@@ -38,7 +43,7 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
       card: "summary_large_image",
       title: "Shared via Shar3",
       description: "Decentralized image sharing with instant previews",
-      images: [decodedUrl],
+      images: [ogImageUrl],
     },
   };
 }
@@ -68,24 +73,36 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
         <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg p-6">
           <div className="aspect-auto max-w-full mx-auto">
             {decodedUrl.includes('vault.jackalprotocol.com') ? (
-              // Special handling for Jackal Vault URLs
-              <div className="text-center py-8">
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
-                    Jackal Vault Image
-                  </h3>
-                  <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                    This image is hosted on Jackal Protocol's decentralized storage.
-                  </p>
-                </div>
-                <iframe
-                  src={decodedUrl}
-                  className="w-full h-96 border border-zinc-300 dark:border-zinc-700 rounded-lg"
-                  title="Jackal Vault Image"
+              // Special handling for Jackal Vault URLs - use our proxy
+              <div className="text-center">
+                <img
+                  src={`/api/proxy-image?url=${encodeURIComponent(decodedUrl)}`}
+                  alt="Jackal Vault Image"
+                  className="max-w-full h-auto rounded-lg mx-auto block"
+                  style={{ maxHeight: "70vh" }}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent && !parent.querySelector('.fallback-message')) {
+                      const fallbackDiv = document.createElement('div');
+                      fallbackDiv.className = 'fallback-message text-center py-8';
+                      fallbackDiv.innerHTML = `
+                        <div class="text-yellow-500 mb-4">⚠️</div>
+                        <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
+                          Image Extraction Failed
+                        </h3>
+                        <p class="text-zinc-600 dark:text-zinc-400 mb-4">
+                          Couldn't extract the image from this Jackal Vault link.
+                        </p>
+                        <p class="text-sm text-blue-600">
+                          Social media previews should still work! Click "View on Jackal Vault" below.
+                        </p>
+                      `;
+                      parent.appendChild(fallbackDiv);
+                    }
+                  }}
                 />
-                <p className="text-xs text-zinc-500 mt-4">
-                  Click "View on Jackal Vault" below to see the full image interface.
-                </p>
               </div>
             ) : (
               // Regular image display
