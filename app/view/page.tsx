@@ -67,12 +67,35 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
         
         <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg p-6">
           <div className="aspect-auto max-w-full mx-auto">
-            <img
-              src={decodedUrl}
-              alt="Shared image"
-              className="max-w-full h-auto rounded-lg mx-auto block"
-              style={{ maxHeight: "70vh" }}
-            />
+            {decodedUrl.includes('vault.jackalprotocol.com') ? (
+              // Special handling for Jackal Vault URLs
+              <div className="text-center py-8">
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
+                    Jackal Vault Image
+                  </h3>
+                  <p className="text-zinc-600 dark:text-zinc-400 mb-4">
+                    This image is hosted on Jackal Protocol's decentralized storage.
+                  </p>
+                </div>
+                <iframe
+                  src={decodedUrl}
+                  className="w-full h-96 border border-zinc-300 dark:border-zinc-700 rounded-lg"
+                  title="Jackal Vault Image"
+                />
+                <p className="text-xs text-zinc-500 mt-4">
+                  Click "View on Jackal Vault" below to see the full image interface.
+                </p>
+              </div>
+            ) : (
+              // Regular image display
+              <img
+                src={decodedUrl}
+                alt="Shared image"
+                className="max-w-full h-auto rounded-lg mx-auto block"
+                style={{ maxHeight: "70vh" }}
+              />
+            )}
           </div>
           
           <div className="mt-6 space-y-4">
@@ -103,7 +126,7 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
                 rel="noopener noreferrer"
                 className="px-6 py-2 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg transition-colors"
               >
-                View Original
+                {decodedUrl.includes('vault.jackalprotocol.com') ? 'View on Jackal Vault' : 'View Original'}
               </a>
             </div>
           </div>
