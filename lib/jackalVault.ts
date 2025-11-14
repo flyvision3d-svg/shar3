@@ -132,73 +132,27 @@ function getMimeType(metadata: any, filename?: string): string {
  * @returns Promise resolving to decrypted file data and MIME type
  */
 export async function fetchAndDecryptVaultFile(vaultUrl: string): Promise<DecryptedFile> {
-  let client: any = null;
-  let storage: any = null;
-
   try {
     console.log('📥 Parsing vault URL...');
     const { vaultAddress, fileId, key } = parseVaultUrl(vaultUrl);
     
+    // Temporary: Return an error for debugging - Jackal SDK might not work in serverless
+    throw new Error(`Jackal SDK integration not yet working in serverless environment. URL parsed: ${vaultAddress}/${fileId} with key ${key.substring(0, 8)}...`);
+    
+    // TODO: Re-enable once we resolve serverless compatibility
+    /*
     console.log('🔗 Connecting to Jackal Protocol...');
     // Initialize Jackal client (read-only, no mnemonic needed for downloads)
-    client = await ClientHandler.connect(mainnetConfig);
-    storage = await client.createStorageHandler();
+    const client = await ClientHandler.connect(mainnetConfig);
+    const storage = await client.createStorageHandler();
     await storage.upgradeSigner();
     
-    console.log('📊 Fetching file metadata...');
-    const downloadRequest = {
-      ulid: fileId,
-      userAddress: vaultAddress,
-      linkKey: key
-    };
-    
-    // Get metadata first (replicating mount-file.js logic)
-    const metadata = await storage.getMetaDataByUlid(downloadRequest);
-    
-    if (metadata.metaDataType !== 'file') {
-      throw new Error(`Expected file, got ${metadata.metaDataType}`);
-    }
-    
-    console.log('📦 Downloading and decrypting file...');
-    const downloadOptions = {
-      ulid: fileId,
-      linkKey: key,
-      trackers: {
-        chunks: [],
-        progress: 0
-      },
-      userAddress: vaultAddress
-    };
-    
-    // Download the file (this handles fetching chunks and decryption automatically)
-    const file: Blob = await storage.downloadByUlid(downloadOptions);
-    
-    console.log('✅ File downloaded and decrypted successfully');
-    
-    // Convert Blob to Uint8Array
-    const arrayBuffer = await file.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
-    
-    // Determine MIME type
-    const mimeType = getMimeType(metadata, metadata.fileMeta?.name);
-    
-    return {
-      mimeType,
-      data
-    };
+    // ... rest of implementation
+    */
     
   } catch (error) {
     console.error('❌ Failed to fetch and decrypt vault file:', error);
     throw error;
-  } finally {
-    // Clean up client connection if needed
-    if (client) {
-      try {
-        // client.disconnect(); // if such method exists
-      } catch (e) {
-        console.warn('Warning: Failed to disconnect client:', e);
-      }
-    }
   }
 }
 

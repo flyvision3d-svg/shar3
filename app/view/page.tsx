@@ -18,10 +18,8 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
 
   const decodedUrl = decodeURIComponent(imageUrl);
   
-  // For Jackal Vault URLs, use our /raw decryption proxy for OG images
-  const ogImageUrl = decodedUrl.includes('vault.jackalprotocol.com') 
-    ? `/raw?u=${encodeURIComponent(decodedUrl)}`
-    : decodedUrl;
+  // Temporary: Disable /raw proxy until serverless compatibility is fixed  
+  const ogImageUrl = decodedUrl;
   
   return {
     title: "Shar3 - Decentralized Image Share",
@@ -73,36 +71,18 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
         <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg p-6">
           <div className="aspect-auto max-w-full mx-auto">
             {decodedUrl.includes('vault.jackalprotocol.com') ? (
-              // Special handling for Jackal Vault URLs - use our proxy
-              <div className="text-center">
-                <img
-                  src={`/raw?u=${encodeURIComponent(decodedUrl)}`}
-                  alt="Jackal Vault Image"
-                  className="max-w-full h-auto rounded-lg mx-auto block"
-                  style={{ maxHeight: "70vh" }}
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    const parent = target.parentElement;
-                    if (parent && !parent.querySelector('.fallback-message')) {
-                      const fallbackDiv = document.createElement('div');
-                      fallbackDiv.className = 'fallback-message text-center py-8';
-                      fallbackDiv.innerHTML = `
-                        <div class="text-yellow-500 mb-4">⚠️</div>
-                        <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
-                          Image Extraction Failed
-                        </h3>
-                        <p class="text-zinc-600 dark:text-zinc-400 mb-4">
-                          Couldn't extract the image from this Jackal Vault link.
-                        </p>
-                        <p class="text-sm text-blue-600">
-                          Social media previews should still work! Click "View on Jackal Vault" below.
-                        </p>
-                      `;
-                      parent.appendChild(fallbackDiv);
-                    }
-                  }}
-                />
+              // Temporary: Show message instead of broken proxy
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">🦎</div>
+                <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
+                  Jackal Protocol Image
+                </h3>
+                <p className="text-zinc-600 dark:text-zinc-400 mb-6 max-w-md mx-auto">
+                  Server-side decryption is being implemented. For now, use the link below to view the image.
+                </p>
+                <p className="text-sm text-blue-600 mb-4">
+                  Social media previews for Jackal images coming soon!
+                </p>
               </div>
             ) : (
               // Regular image display
