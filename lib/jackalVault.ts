@@ -147,66 +147,61 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
   try {
     console.log('📦 Finding storage providers and downloading chunks...');
     
-    // Step 1: First we need to get the merkle hash from file metadata
-    // The merkle hash is what's used in /download/<id>, not the ULID
-    let merkleHex: string;
-    
-    // Try to extract merkle hash from metadata, or derive it
-    if (metadata.rawResponse?.response?.value) {
-      // Parse the file metadata response to get merkle hash
-      const metadataDecoded = Buffer.from(metadata.rawResponse.response.value, 'base64');
-      console.log('METADATA_DECODED', metadataDecoded.toString('hex'));
-      // TODO: Parse protobuf to extract merkle hash field
-    }
-    
-    // For now, let's generate a hash from the ULID as the DevTools pattern suggests
-    // This should be replaced with actual merkle hash extraction from metadata
-    merkleHex = createHash('sha256').update(fileId).digest('hex');
+    // Step 1: Generate CID (content identifier) from ULID
+    // Based on DevTools analysis, this is the merkle hash used in /download/<cid>
+    const cid = createHash('sha256').update(fileId).digest('hex');
     
     console.log('ULID', fileId);
-    console.log('DOWNLOAD_ID', merkleHex);
+    console.log('CID', cid);
     
-    // Step 2: Query FindFile to confirm this merkle hash exists
-    console.log('🔍 Querying FindFile for merkle hash...');
-    const findFileData = `0a20${merkleHex}`;
-    const findFileResult = await postAbciQuery('/canine_chain.storage.Query/FindFile', findFileData);
-    
-    console.log('FIND_FILE_RESPONSE', JSON.stringify(findFileResult, null, 2));
-    
-    // Step 3: Get list of all storage providers
-    console.log('🔍 Getting all storage providers...');
-    const providersResult = await postAbciQuery('/canine_chain.storage.Query/AllProviders', '');
-    
-    console.log('ALL_PROVIDERS_RESPONSE', JSON.stringify(providersResult, null, 2));
-    
-    // Extract provider URLs from the protobuf response
-    let providerUrls: string[] = [];
-    if (providersResult && providersResult.response && providersResult.response.value) {
-      const decoded = Buffer.from(providersResult.response.value, 'base64');
-      const text = decoded.toString();
-      const urlMatches = text.match(/https?:\/\/[^\s\x00-\x1f]+/g);
-      if (urlMatches) {
-        providerUrls = urlMatches.slice(0, 5); // Try first 5 providers
-        console.log(`📦 Found ${urlMatches.length} providers, testing first 5:`, providerUrls);
-      }
-    }
-    
-    // Fallback to known working provider
-    if (providerUrls.length === 0) {
-      providerUrls = ['https://jackal-storage1.badgerbite.io'];
-    }
-    
-    console.log('PROVIDERS', providerUrls);
-    console.log('PROVIDERS_USED_FOR_DOWNLOAD', JSON.stringify(providerUrls, null, 2));
-    
-    const downloadId = merkleHex; // Use merkle hash as download ID, not ULID
-    
-    // Step 4: Try downloading from multiple providers with detailed tracking
     const attempts: DownloadAttempt[] = [];
+    const PRIMARY_STORAGE_HOST = "jkstorage4.squirrellogic.com";
     
-    for (const providerUrl of providerUrls) {
-      const url = `${providerUrl}/download/${downloadId}`;
-      console.log(`📦 Trying download from ${url}...`);
+    // Step 2: Try primary gateway first (known working from DevTools)
+    const primaryUrl = `https://${PRIMARY_STORAGE_HOST}/download/${cid}`;
+    console.log(`📦 Trying primary storage: ${primaryUrl}`);
+    
+    try {
+      const res = await fetch(primaryUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Shar3-Jackal-Client/1.0'
+        }
+      });
+      
+      attempts.push({ url: primaryUrl, status: res.status });
+      console.log(`📡 Primary response: ${res.status} ${res.statusText}`);
+      
+      if (res.ok) {
+        const arrayBuffer = await res.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+        console.log(`✅ Successfully downloaded ${data.length} bytes from primary storage`);
+        return data;
+      } else {
+        const body = await res.text().catch(() => "");
+        attempts[attempts.length - 1].error = body || `status ${res.status}`;
+        console.log(`❌ Primary storage failed: ${res.status}. Body: ${body}`);
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      attempts.push({ url: primaryUrl, error: errorMsg });
+      console.log(`❌ Primary storage error:`, errorMsg);
+    }
+    
+    // Step 3: Fallback to other providers if primary fails
+    const fallbackHosts = [
+      "pod-04.jackalstorage.online",
+      "pod-01.jackalstorage.online", 
+      "m4.jkldrive.com",
+      "jackal-storage1.badgerbite.io",
+      "jsn4.pegasusdev.xyz",
+    ];
+    
+    console.log(`📦 Primary failed, trying ${fallbackHosts.length} fallback providers...`);
+    
+    for (const host of fallbackHosts) {
+      const url = `https://${host}/download/${cid}`;
+      console.log(`📦 Trying fallback: ${url}`);
       
       try {
         const res = await fetch(url, {
@@ -216,23 +211,23 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
           }
         });
         
-        console.log(`📡 Response from ${url}: ${res.status} ${res.statusText}`);
+        attempts.push({ url, status: res.status });
+        console.log(`📡 Fallback response from ${host}: ${res.status} ${res.statusText}`);
         
         if (res.ok) {
-          attempts.push({ url, status: res.status });
           const arrayBuffer = await res.arrayBuffer();
           const data = new Uint8Array(arrayBuffer);
-          console.log(`✅ Successfully downloaded ${data.length} bytes from ${url}`);
+          console.log(`✅ Successfully downloaded ${data.length} bytes from fallback: ${host}`);
           return data;
         } else {
-          const body = await res.text().catch(() => '<failed to read body>');
-          attempts.push({ url, status: res.status, error: body });
-          console.log(`❌ Non-OK response from ${url}: ${res.status} ${res.statusText}. Body: ${body}`);
+          const body = await res.text().catch(() => "");
+          attempts[attempts.length - 1].error = body || `status ${res.status}`;
+          console.log(`❌ Fallback ${host} failed: ${res.status}. Body: ${body}`);
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         attempts.push({ url, error: errorMsg });
-        console.log(`❌ Failed to download from ${url}:`, errorMsg);
+        console.log(`❌ Fallback ${host} error:`, errorMsg);
       }
     }
     
