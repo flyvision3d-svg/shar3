@@ -2,6 +2,8 @@
 // Based on the mount-file.js logic from Jackal Protocol
 // Manual HTTP + crypto implementation (no Jackal SDK)
 
+import { postAbciQuery, downloadEncryptedChunk } from '@/lib/jackalRpc';
+
 // Crypto setup for Node.js environment
 let subtle: SubtleCrypto;
 if (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle) {
@@ -101,9 +103,6 @@ async function fetchFileMetadata(vaultAddress: string, fileId: string, key: stri
   try {
     console.log(`📊 Fetching metadata for ${fileId} from ${vaultAddress}...`);
     
-    // Import RPC function
-    const { postAbciQuery } = await import('./jackalRpc.js');
-    
     // Use discovered protobuf encoding for ULID query
     const ulidBytes = Buffer.from(fileId, 'utf8');
     const dataHex = `0a${ulidBytes.length.toString(16).padStart(2, '0')}${ulidBytes.toString('hex')}`;
@@ -140,8 +139,6 @@ async function fetchFileMetadata(vaultAddress: string, fileId: string, key: stri
 async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Promise<Uint8Array> {
   try {
     console.log('📦 Finding storage providers and downloading chunks...');
-    
-    const { postAbciQuery, downloadEncryptedChunk } = await import('./jackalRpc.js');
     
     // Step 1: Get list of all storage providers
     console.log('🔍 Getting all storage providers...');

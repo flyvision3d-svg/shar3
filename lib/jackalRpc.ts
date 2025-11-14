@@ -23,7 +23,7 @@ interface JsonRpcResponse {
 
 /**
  * Post an ABCI query to Jackal RPC endpoint
- * Discovered endpoint: https://jklrpc.squirrelglogic.com/
+ * Current endpoint: https://rpc.jackalprotocol.com/
  * 
  * @param path - Query path like "/canine_chain.filetree.Query/File"
  * @param dataHex - Hex-encoded query data 
