@@ -49,36 +49,17 @@ export async function GET(request: NextRequest) {
     return response;
 
   } catch (error) {
-    console.error('❌ Raw file proxy error:', error);
+    console.error('RAW_HANDLER_ERROR', error);
+    const message =
+      error instanceof Error
+        ? `${error.name}: ${error.message}\n${error.stack ?? ''}`
+        : JSON.stringify(error, null, 2);
 
-    // Determine appropriate error response
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
-    if (errorMessage.includes('not found') || errorMessage.includes('404')) {
-      return new NextResponse('File not found or cannot be decrypted', { 
-        status: 404,
-        headers: { 'Content-Type': 'text/plain' }
-      });
-    }
-    
-    if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
-      return new NextResponse('Upstream service unavailable', { 
-        status: 502,
-        headers: { 'Content-Type': 'text/plain' }
-      });
-    }
-    
-    if (errorMessage.includes('decrypt') || errorMessage.includes('key')) {
-      return new NextResponse('Decryption failed - invalid key or corrupted file', { 
-        status: 422,
-        headers: { 'Content-Type': 'text/plain' }
-      });
-    }
-
-    // Generic server error
-    return new NextResponse('Internal server error during file processing', { 
+    return new NextResponse(message, {
       status: 500,
-      headers: { 'Content-Type': 'text/plain' }
+      headers: {
+        'Content-Type': 'text/plain',
+      },
     });
   }
 }
