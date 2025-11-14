@@ -162,10 +162,15 @@ function collectHexCandidates(obj: any, path: string[] = [], out: string[] = [])
  * Decode FindFile protobuf response value
  * For now, just decode the base64 and log raw bytes until we have proper protobuf types
  */
-function decodeFindFileValue(response: any): any {
-  const valueB64 = response?.result?.response?.value;
+function decodeFindFileValue(rpcResponse: any): any {
+  const valueB64 = rpcResponse?.result?.response?.value;
+  
   if (!valueB64) {
-    throw new Error('FindFile response missing value');
+    console.error(
+      'FIND_FILE_NO_VALUE_RESPONSE',
+      JSON.stringify(rpcResponse?.result?.response ?? rpcResponse, null, 2)
+    );
+    throw new Error('FindFile returned no value – see FIND_FILE_NO_VALUE_RESPONSE logs');
   }
 
   const raw = Buffer.from(valueB64, 'base64');
@@ -216,25 +221,71 @@ async function getFindFileInfo(fileId: string): Promise<any> {
     console.log(`🔍 Querying FindFile for: ${fileId}`);
     
     // Build the protobuf query for FindFile
-    // Based on Jackal SDK usage, this should be the merkle hash or file identifier
-    const fileIdBytes = Buffer.from(fileId, 'utf8');
-    const dataHex = `0a${fileIdBytes.length.toString(16).padStart(2, '0')}${fileIdBytes.toString('hex')}`;
-    
-    console.log(`🔍 FindFile query hex: ${dataHex}`);
+    // The browser DevTools shows format: "0a20<64-char-hex>" for 32-byte hashes
+    // Let's try both the ULID as-is and as a potential hash
     
     const path = '/canine_chain.storage.Query/FindFile';
-    const response = await postAbciQuery(path, dataHex);
+    let dataHex: string;
     
-    console.log('FIND_FILE_RESPONSE_RAW', JSON.stringify(response, null, 2));
+    // TODO: For debugging - uncomment and paste exact data from DevTools
+    // Example from browser DevTools: "0a20<some-64-char-hex>"
+    // const hardcodedData = '0a20<paste-from-devtools>';
+    // if (hardcodedData.startsWith('0a20') && hardcodedData.length === 68) {
+    //   console.log('🧪 Using hardcoded data from DevTools for debugging');
+    //   dataHex = hardcodedData;
+    // } else {
     
-    // Decode the response
-    const decoded = decodeFindFileValue(response);
+    // Strategy 1: Try fileId as UTF-8 string (current approach)
+    const fileIdBytes = Buffer.from(fileId, 'utf8');
+    dataHex = `0a${fileIdBytes.length.toString(16).padStart(2, '0')}${fileIdBytes.toString('hex')}`;
+    // }
+    
+    console.log(`🔍 FindFile query data: ${dataHex}`);
+    console.log('FIND_FILE_RPC_REQUEST', JSON.stringify({
+      jsonrpc: '2.0',
+      id: '<debug>',
+      method: 'abci_query',
+      params: { path, data: dataHex, prove: false }
+    }, null, 2));
+    
+    const rpcResponse = await postAbciQuery(path, dataHex);
+    
+    console.log('FIND_FILE_RPC_RESPONSE_RAW', JSON.stringify(rpcResponse, null, 2));
+    
+    // Try to decode the response
+    let decoded = null;
+    try {
+      decoded = decodeFindFileValue(rpcResponse);
+    } catch (decodeError) {
+      console.log('🔍 First attempt failed, trying alternative encoding...');
+      
+      // Strategy 2: If fileId looks like a hex string, try it as raw hex
+      if (/^[0-9a-f]+$/i.test(fileId) && fileId.length === 64) {
+        // Treat as 32-byte hex hash
+        const hexBytes = Buffer.from(fileId, 'hex');
+        const altDataHex = `0a20${hexBytes.toString('hex')}`; // 0a20 = field 1, 32 bytes
+        
+        console.log(`🔍 Alternative FindFile query (as hex): ${altDataHex}`);
+        const altResponse = await postAbciQuery(path, altDataHex);
+        console.log('FIND_FILE_ALT_RESPONSE_RAW', JSON.stringify(altResponse, null, 2));
+        
+        try {
+          decoded = decodeFindFileValue(altResponse);
+          console.log('✅ Alternative encoding worked!');
+        } catch (altError) {
+          console.log('❌ Alternative encoding also failed');
+          throw decodeError; // Throw original error
+        }
+      } else {
+        throw decodeError;
+      }
+    }
     
     // Look for hex candidates that might be the CID
-    const candidates = collectHexCandidates(response);
+    const candidates = collectHexCandidates(rpcResponse);
     console.log('FIND_FILE_HEX_CANDIDATES', candidates);
     
-    return { response, decoded, candidates };
+    return { response: rpcResponse, decoded, candidates };
     
   } catch (error) {
     console.error('❌ FindFile query failed:', error);
