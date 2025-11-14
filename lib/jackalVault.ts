@@ -132,6 +132,12 @@ async function fetchFileMetadata(vaultAddress: string, fileId: string, key: stri
   }
 }
 
+interface DownloadAttempt {
+  url: string;
+  status?: number;
+  error?: string;
+}
+
 /**
  * Fetch encrypted file chunks from storage provider
  * Based on DevTools inspection: GET /download/<chunkId>
@@ -144,7 +150,7 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
     console.log('🔍 Getting all storage providers...');
     const providersResult = await postAbciQuery('/canine_chain.storage.Query/AllProviders', '');
     
-    console.log('📄 Raw AllProviders response:', providersResult);
+    console.log('FIND_FILE_RESPONSE', JSON.stringify(providersResult, null, 2));
     
     // Extract provider URLs from the protobuf response
     let providerUrls: string[] = [];
@@ -163,27 +169,45 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
       providerUrls = ['https://jackal-storage1.badgerbite.io'];
     }
     
+    console.log('PROVIDERS', providerUrls);
+    
     const downloadId = fileId; // Start with ULID as download ID
     
-    // Step 2: Try downloading from multiple providers
-    let encryptedData: Uint8Array | null = null;
+    // Step 2: Try downloading from multiple providers with detailed tracking
+    const attempts: DownloadAttempt[] = [];
     
     for (const providerUrl of providerUrls) {
-      console.log(`📦 Trying download from ${providerUrl}...`);
+      const url = `${providerUrl}/download/${downloadId}`;
+      console.log(`📦 Trying download from ${url}...`);
+      
       try {
-        encryptedData = await downloadEncryptedChunk(providerUrl, downloadId);
-        console.log(`✅ Successfully downloaded ${encryptedData.length} bytes from ${providerUrl}`);
-        break;
-      } catch (error) {
-        console.log(`❌ Failed to download from ${providerUrl}:`, error instanceof Error ? error.message : 'Unknown error');
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Shar3-Jackal-Client/1.0'
+          }
+        });
+        
+        attempts.push({ url, status: res.status });
+        console.log(`📡 Response from ${url}: ${res.status} ${res.statusText}`);
+        
+        if (res.ok) {
+          const arrayBuffer = await res.arrayBuffer();
+          const data = new Uint8Array(arrayBuffer);
+          console.log(`✅ Successfully downloaded ${data.length} bytes from ${url}`);
+          return data;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        attempts.push({ url, error: errorMsg });
+        console.log(`❌ Failed to download from ${url}:`, errorMsg);
       }
     }
     
-    if (!encryptedData) {
-      throw new Error('Failed to download from any storage provider');
-    }
-    
-    return encryptedData;
+    throw new Error(
+      'Failed to download from any storage provider. Attempts: ' +
+        JSON.stringify(attempts, null, 2)
+    );
     
   } catch (error) {
     throw new Error(`Failed to fetch encrypted chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
