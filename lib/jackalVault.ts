@@ -197,6 +197,7 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
     }
     
     console.log('PROVIDERS', providerUrls);
+    console.log('PROVIDERS_USED_FOR_DOWNLOAD', JSON.stringify(providerUrls, null, 2));
     
     const downloadId = merkleHex; // Use merkle hash as download ID, not ULID
     
@@ -215,14 +216,18 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
           }
         });
         
-        attempts.push({ url, status: res.status });
         console.log(`📡 Response from ${url}: ${res.status} ${res.statusText}`);
         
         if (res.ok) {
+          attempts.push({ url, status: res.status });
           const arrayBuffer = await res.arrayBuffer();
           const data = new Uint8Array(arrayBuffer);
           console.log(`✅ Successfully downloaded ${data.length} bytes from ${url}`);
           return data;
+        } else {
+          const body = await res.text().catch(() => '<failed to read body>');
+          attempts.push({ url, status: res.status, error: body });
+          console.log(`❌ Non-OK response from ${url}: ${res.status} ${res.statusText}. Body: ${body}`);
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
