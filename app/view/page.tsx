@@ -18,9 +18,9 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
 
   const decodedUrl = decodeURIComponent(imageUrl);
   
-  // For Jackal Vault URLs, use our proxy to serve the raw image
+  // For Jackal Vault URLs, use our /raw decryption proxy for OG images
   const ogImageUrl = decodedUrl.includes('vault.jackalprotocol.com') 
-    ? `/api/proxy-image?url=${encodeURIComponent(decodedUrl)}`
+    ? `/raw?u=${encodeURIComponent(decodedUrl)}`
     : decodedUrl;
   
   return {
@@ -76,7 +76,7 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
               // Special handling for Jackal Vault URLs - use our proxy
               <div className="text-center">
                 <img
-                  src={`/api/proxy-image?url=${encodeURIComponent(decodedUrl)}`}
+                  src={`/raw?u=${encodeURIComponent(decodedUrl)}`}
                   alt="Jackal Vault Image"
                   className="max-w-full h-auto rounded-lg mx-auto block"
                   style={{ maxHeight: "70vh" }}
