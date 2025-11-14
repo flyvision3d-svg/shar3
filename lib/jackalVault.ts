@@ -94,21 +94,39 @@ function getMimeType(metadata: any, filename?: string): string {
 }
 
 /**
- * Fetch file metadata from Jackal Protocol API
- * Based on mount-file.js metadata fetching logic
+ * Fetch file metadata from Jackal Protocol using RPC
+ * Based on DevTools inspection: /canine_chain.filetree.Query/File
  */
 async function fetchFileMetadata(vaultAddress: string, fileId: string, key: string): Promise<FileMetadata> {
   try {
-    console.log(`📊 Fetching metadata for ${fileId}...`);
+    console.log(`📊 Fetching metadata for ${fileId} from ${vaultAddress}...`);
     
-    // TODO: Implement based on mount-file.js - need the actual API endpoints and request format
-    // Example expectation based on mount-file.js:
-    // const response = await fetch(`https://api.jackalprotocol.com/jackal/storage/files/${fileId}`, {
-    //   headers: { /* auth headers if needed */ }
-    // });
+    // Import RPC function
+    const { postAbciQuery } = await import('./jackalRpc.js');
     
-    // For now, throw with clear placeholder message
-    throw new Error(`[PLACEHOLDER] fetchFileMetadata not implemented - need mount-file.js API call details for metadata. Trying to fetch: ${vaultAddress}/${fileId}`);
+    // Use discovered protobuf encoding for ULID query
+    const ulidBytes = Buffer.from(fileId, 'utf8');
+    const dataHex = `0a${ulidBytes.length.toString(16).padStart(2, '0')}${ulidBytes.toString('hex')}`;
+    
+    console.log(`🔍 Querying filetree with ULID: ${fileId} (hex: ${dataHex})`);
+    const result = await postAbciQuery('/canine_chain.filetree.Query/File', dataHex);
+    
+    // Parse the response - structure to be discovered
+    console.log('📄 Raw filetree response:', result);
+    
+    // TODO: Extract fields once we see the response structure:
+    // - mimeType / filename
+    // - file size  
+    // - merkle hash for storage lookup
+    // - crypto parameters (IV, etc.)
+    
+    return {
+      mimeType: 'image/png', // Placeholder until we see response structure
+      filename: fileId,
+      size: 0,
+      // Add fields as discovered
+      rawResponse: result
+    };
     
   } catch (error) {
     throw new Error(`Failed to fetch metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -117,21 +135,58 @@ async function fetchFileMetadata(vaultAddress: string, fileId: string, key: stri
 
 /**
  * Fetch encrypted file chunks from storage provider
- * Based on mount-file.js chunk fetching logic
+ * Based on DevTools inspection: GET /download/<chunkId>
  */
 async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Promise<Uint8Array> {
   try {
-    console.log('📦 Fetching encrypted chunks...');
+    console.log('📦 Finding storage providers and downloading chunks...');
     
-    // TODO: Implement based on mount-file.js - need provider URL and download endpoint
-    // Example expectation:
-    // const response = await fetch(`${metadata.providerUrl}/download/${fileId}`, {
-    //   method: 'GET'
-    // });
-    // const encryptedData = await response.arrayBuffer();
-    // return new Uint8Array(encryptedData);
+    const { postAbciQuery, downloadEncryptedChunk } = await import('./jackalRpc.js');
     
-    throw new Error(`[PLACEHOLDER] fetchEncryptedChunks not implemented - need mount-file.js provider URL and download logic for ${fileId}`);
+    // Step 1: Get list of all storage providers
+    console.log('🔍 Getting all storage providers...');
+    const providersResult = await postAbciQuery('/canine_chain.storage.Query/AllProviders', '');
+    
+    console.log('📄 Raw AllProviders response:', providersResult);
+    
+    // Extract provider URLs from the protobuf response
+    let providerUrls: string[] = [];
+    if (providersResult && providersResult.response && providersResult.response.value) {
+      const decoded = Buffer.from(providersResult.response.value, 'base64');
+      const text = decoded.toString();
+      const urlMatches = text.match(/https?:\/\/[^\s\x00-\x1f]+/g);
+      if (urlMatches) {
+        providerUrls = urlMatches.slice(0, 5); // Try first 5 providers
+        console.log(`📦 Found ${urlMatches.length} providers, testing first 5:`, providerUrls);
+      }
+    }
+    
+    // Fallback to known working provider
+    if (providerUrls.length === 0) {
+      providerUrls = ['https://jackal-storage1.badgerbite.io'];
+    }
+    
+    const downloadId = fileId; // Start with ULID as download ID
+    
+    // Step 2: Try downloading from multiple providers
+    let encryptedData: Uint8Array | null = null;
+    
+    for (const providerUrl of providerUrls) {
+      console.log(`📦 Trying download from ${providerUrl}...`);
+      try {
+        encryptedData = await downloadEncryptedChunk(providerUrl, downloadId);
+        console.log(`✅ Successfully downloaded ${encryptedData.length} bytes from ${providerUrl}`);
+        break;
+      } catch (error) {
+        console.log(`❌ Failed to download from ${providerUrl}:`, error instanceof Error ? error.message : 'Unknown error');
+      }
+    }
+    
+    if (!encryptedData) {
+      throw new Error('Failed to download from any storage provider');
+    }
+    
+    return encryptedData;
     
   } catch (error) {
     throw new Error(`Failed to fetch encrypted chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -140,24 +195,25 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
 
 /**
  * Decrypt file data using the provided key
- * Based on mount-file.js crypto logic
+ * Placeholder until crypto parameters are discovered
  */
 async function decryptFileData(encryptedData: Uint8Array, key: string, metadata: FileMetadata): Promise<Uint8Array> {
   try {
     console.log('🔓 Decrypting file data...');
     
-    // TODO: Implement based on mount-file.js crypto details:
-    // 1. Key derivation from 'key' parameter
-    // 2. IV/nonce extraction 
-    // 3. Algorithm parameters (AES-GCM, AES-CBC, etc.)
+    // TODO: Implement once we discover:
+    // 1. Key derivation method
+    // 2. IV/nonce location in data or metadata
+    // 3. Encryption algorithm (AES-GCM likely)
     // 4. Auth tag handling
-    // 
-    // Example expectation:
-    // const cryptoKey = await subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
-    // const decrypted = await subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, cryptoKey, encryptedData);
-    // return new Uint8Array(decrypted);
     
-    throw new Error(`[PLACEHOLDER] decryptFileData not implemented - need mount-file.js crypto algorithm and key derivation details. Key: ${key.substring(0, 8)}..., Data size: ${encryptedData.length}`);
+    console.log(`📊 Encrypted data size: ${encryptedData.length} bytes`);
+    console.log(`🔑 Key prefix: ${key.substring(0, 8)}...`);
+    console.log(`📄 Metadata available:`, metadata);
+    
+    // For now, return encrypted data unchanged for testing
+    console.log('⚠️  [PLACEHOLDER] Returning encrypted data unchanged - decryption not yet implemented');
+    return encryptedData;
     
   } catch (error) {
     throw new Error(`Failed to decrypt file: ${error instanceof Error ? error.message : 'Unknown error'}`);
