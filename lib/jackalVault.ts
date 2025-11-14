@@ -3,6 +3,7 @@
 // Manual HTTP + crypto implementation (no Jackal SDK)
 
 import { postAbciQuery, downloadEncryptedChunk } from '@/lib/jackalRpc';
+import { createHash } from 'node:crypto';
 
 // Crypto setup for Node.js environment
 let subtle: SubtleCrypto;
@@ -146,11 +147,37 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
   try {
     console.log('📦 Finding storage providers and downloading chunks...');
     
-    // Step 1: Get list of all storage providers
+    // Step 1: First we need to get the merkle hash from file metadata
+    // The merkle hash is what's used in /download/<id>, not the ULID
+    let merkleHex: string;
+    
+    // Try to extract merkle hash from metadata, or derive it
+    if (metadata.rawResponse?.response?.value) {
+      // Parse the file metadata response to get merkle hash
+      const metadataDecoded = Buffer.from(metadata.rawResponse.response.value, 'base64');
+      console.log('METADATA_DECODED', metadataDecoded.toString('hex'));
+      // TODO: Parse protobuf to extract merkle hash field
+    }
+    
+    // For now, let's generate a hash from the ULID as the DevTools pattern suggests
+    // This should be replaced with actual merkle hash extraction from metadata
+    merkleHex = createHash('sha256').update(fileId).digest('hex');
+    
+    console.log('ULID', fileId);
+    console.log('DOWNLOAD_ID', merkleHex);
+    
+    // Step 2: Query FindFile to confirm this merkle hash exists
+    console.log('🔍 Querying FindFile for merkle hash...');
+    const findFileData = `0a20${merkleHex}`;
+    const findFileResult = await postAbciQuery('/canine_chain.storage.Query/FindFile', findFileData);
+    
+    console.log('FIND_FILE_RESPONSE', JSON.stringify(findFileResult, null, 2));
+    
+    // Step 3: Get list of all storage providers
     console.log('🔍 Getting all storage providers...');
     const providersResult = await postAbciQuery('/canine_chain.storage.Query/AllProviders', '');
     
-    console.log('FIND_FILE_RESPONSE', JSON.stringify(providersResult, null, 2));
+    console.log('ALL_PROVIDERS_RESPONSE', JSON.stringify(providersResult, null, 2));
     
     // Extract provider URLs from the protobuf response
     let providerUrls: string[] = [];
@@ -171,9 +198,9 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
     
     console.log('PROVIDERS', providerUrls);
     
-    const downloadId = fileId; // Start with ULID as download ID
+    const downloadId = merkleHex; // Use merkle hash as download ID, not ULID
     
-    // Step 2: Try downloading from multiple providers with detailed tracking
+    // Step 4: Try downloading from multiple providers with detailed tracking
     const attempts: DownloadAttempt[] = [];
     
     for (const providerUrl of providerUrls) {
