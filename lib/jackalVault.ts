@@ -140,6 +140,109 @@ interface DownloadAttempt {
 }
 
 /**
+ * Helper function to collect all hex string candidates from an object
+ * Useful for finding CID fields in protobuf responses
+ */
+function collectHexCandidates(obj: any, path: string[] = [], out: string[] = []): string[] {
+  if (!obj || typeof obj !== 'object') return out;
+  for (const [key, val] of Object.entries(obj)) {
+    const nextPath = [...path, key];
+    if (typeof val === 'string' && /^[0-9a-f]{64}$/i.test(val)) {
+      out.push(`${nextPath.join('.')} = ${val}`);
+    } else if (Array.isArray(val)) {
+      val.forEach((item, idx) => collectHexCandidates(item, [...nextPath, String(idx)], out));
+    } else if (typeof val === 'object') {
+      collectHexCandidates(val, nextPath, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * Decode FindFile protobuf response value
+ * For now, just decode the base64 and log raw bytes until we have proper protobuf types
+ */
+function decodeFindFileValue(response: any): any {
+  const valueB64 = response?.result?.response?.value;
+  if (!valueB64) {
+    throw new Error('FindFile response missing value');
+  }
+
+  const raw = Buffer.from(valueB64, 'base64');
+  console.log('FIND_FILE_RAW_BYTES', raw.toString('hex'));
+  
+  // TODO: Use proper protobuf decoding once we have the schema
+  // For now, try to parse as simple fields and log everything we can
+  
+  // Try to extract potential string fields (protobuf strings are length-prefixed)
+  const potentialStrings = [];
+  for (let i = 0; i < raw.length - 1; i++) {
+    const len = raw[i];
+    if (len > 0 && len < 100 && i + 1 + len <= raw.length) {
+      const str = raw.slice(i + 1, i + 1 + len).toString('utf8');
+      if (/^[0-9a-f]+$/i.test(str) && str.length >= 32) {
+        potentialStrings.push({ offset: i, length: len, value: str });
+      }
+    }
+  }
+  
+  const decoded = {
+    rawBytes: raw.toString('hex'),
+    length: raw.length,
+    firstBytes: raw.slice(0, 32).toString('hex'),
+    lastBytes: raw.slice(-32).toString('hex'),
+    potentialHexStrings: potentialStrings,
+    // Try to find 32-byte sequences that might be hashes
+    possibleHashes: [] as Array<{ offset: number; hash: string }>,
+  };
+  
+  // Look for 32-byte sequences that might be hashes/CIDs
+  for (let i = 0; i <= raw.length - 32; i++) {
+    const hash = raw.slice(i, i + 32).toString('hex');
+    if (/^[0-9a-f]{64}$/i.test(hash)) {
+      decoded.possibleHashes.push({ offset: i, hash });
+    }
+  }
+
+  console.log('FIND_FILE_DECODED', JSON.stringify(decoded, null, 2));
+  return decoded;
+}
+
+/**
+ * Query FindFile RPC to get the actual CID for storage download
+ */
+async function getFindFileInfo(fileId: string): Promise<any> {
+  try {
+    console.log(`🔍 Querying FindFile for: ${fileId}`);
+    
+    // Build the protobuf query for FindFile
+    // Based on Jackal SDK usage, this should be the merkle hash or file identifier
+    const fileIdBytes = Buffer.from(fileId, 'utf8');
+    const dataHex = `0a${fileIdBytes.length.toString(16).padStart(2, '0')}${fileIdBytes.toString('hex')}`;
+    
+    console.log(`🔍 FindFile query hex: ${dataHex}`);
+    
+    const path = '/canine_chain.storage.Query/FindFile';
+    const response = await postAbciQuery(path, dataHex);
+    
+    console.log('FIND_FILE_RESPONSE_RAW', JSON.stringify(response, null, 2));
+    
+    // Decode the response
+    const decoded = decodeFindFileValue(response);
+    
+    // Look for hex candidates that might be the CID
+    const candidates = collectHexCandidates(response);
+    console.log('FIND_FILE_HEX_CANDIDATES', candidates);
+    
+    return { response, decoded, candidates };
+    
+  } catch (error) {
+    console.error('❌ FindFile query failed:', error);
+    throw new Error(`Failed to query FindFile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
  * Fetch encrypted file chunks from storage provider
  * Based on DevTools inspection: GET /download/<chunkId>
  */
@@ -147,12 +250,59 @@ async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Pro
   try {
     console.log('📦 Finding storage providers and downloading chunks...');
     
-    // Step 1: Generate CID (content identifier) from ULID
-    // Based on DevTools analysis, this is the merkle hash used in /download/<cid>
-    const cid = createHash('sha256').update(fileId).digest('hex');
+    // Step 1: Query FindFile to get the actual CID
+    console.log('🔍 Querying FindFile for correct CID...');
+    const findFileInfo = await getFindFileInfo(fileId);
+    
+    // Extract CID from FindFile response
+    // TODO: Update this path once we identify the correct field from the logs
+    let cid: string | null = null;
+    
+    // Try multiple potential CID locations based on Jackal SDK patterns
+    const response = findFileInfo.response;
+    const decoded = findFileInfo.decoded;
+    
+    // Strategy 1: Try potential hex strings from protobuf parsing
+    if (decoded.potentialHexStrings && decoded.potentialHexStrings.length > 0) {
+      for (const hexStr of decoded.potentialHexStrings) {
+        if (hexStr.value.length === 64) { // 32 bytes as hex = 64 chars
+          cid = hexStr.value;
+          console.log('🎯 Using CID from potential hex string:', cid);
+          break;
+        }
+      }
+    }
+    
+    // Strategy 2: Try possible hashes from raw byte analysis
+    if (!cid && decoded.possibleHashes && decoded.possibleHashes.length > 0) {
+      cid = decoded.possibleHashes[0].hash;
+      console.log('🎯 Using CID from possible hash at offset', decoded.possibleHashes[0].offset, ':', cid);
+    }
+    
+    // Strategy 3: Try hex candidates from deep object traversal
+    if (!cid && findFileInfo.candidates && findFileInfo.candidates.length > 0) {
+      const firstCandidate = findFileInfo.candidates[0];
+      if (firstCandidate) {
+        const match = firstCandidate.match(/([0-9a-f]{64})/i);
+        if (match) {
+          cid = match[1];
+          console.log('🎯 Using CID from hex candidates:', cid);
+        }
+      }
+    }
+    
+    // Fallback: try the old method as backup
+    if (!cid) {
+      console.log('⚠️  No CID found in FindFile response, falling back to SHA256(fileId)');
+      cid = createHash('sha256').update(fileId).digest('hex');
+    }
     
     console.log('ULID', fileId);
-    console.log('CID', cid);
+    console.log('USING_CID_FOR_DOWNLOAD', cid);
+    
+    if (!cid) {
+      throw new Error('Could not determine CID for file download');
+    }
     
     const attempts: DownloadAttempt[] = [];
     const PRIMARY_STORAGE_HOST = "jkstorage4.squirrellogic.com";
