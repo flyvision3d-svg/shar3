@@ -1,7 +1,16 @@
 // Jackal Vault decryption helper module
 // Based on the mount-file.js logic from Jackal Protocol
+// Manual HTTP + crypto implementation (no Jackal SDK)
 
-import { ClientHandler, IClientSetup } from '@jackallabs/jackal.js';
+// Crypto setup for Node.js environment
+let subtle: SubtleCrypto;
+if (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle) {
+  subtle = globalThis.crypto.subtle;
+} else {
+  // Fallback for Node.js
+  const { webcrypto } = require('node:crypto');
+  subtle = webcrypto.subtle;
+}
 
 interface VaultUrlParts {
   vaultAddress: string;
@@ -9,60 +18,19 @@ interface VaultUrlParts {
   key: string;
 }
 
-interface DecryptedFile {
+export interface JackalDecryptedFile {
   mimeType: string;
   data: Uint8Array;
 }
 
-// Jackal mainnet configuration (based on mount-file.js and IClientSetup interface)
-const mainnetConfig: IClientSetup = {
-  selectedWallet: 'mnemonic',
-  mnemonic: '', // Empty mnemonic for read-only access
-  endpoint: 'https://rpc.jackalprotocol.com',
-  chainId: 'jackal-1',
-  chainConfig: {
-    chainId: 'jackal-1',
-    chainName: 'Jackal',
-    rpc: 'https://rpc.jackalprotocol.com',
-    rest: 'https://api.jackalprotocol.com',
-    bip44: {
-      coinType: 118,
-    },
-    bech32Config: {
-      bech32PrefixAccAddr: 'jkl',
-      bech32PrefixAccPub: 'jklpub',
-      bech32PrefixValAddr: 'jklvaloper',
-      bech32PrefixValPub: 'jklvaloperpub',
-      bech32PrefixConsAddr: 'jklvalcons',
-      bech32PrefixConsPub: 'jklvalconspub',
-    },
-    currencies: [
-      {
-        coinDenom: 'JKL',
-        coinMinimalDenom: 'ujkl',
-        coinDecimals: 6,
-      },
-    ],
-    feeCurrencies: [
-      {
-        coinDenom: 'JKL',
-        coinMinimalDenom: 'ujkl',
-        coinDecimals: 6,
-        gasPriceStep: {
-          low: 0.002,
-          average: 0.002,
-          high: 0.02,
-        },
-      },
-    ],
-    stakeCurrency: {
-      coinDenom: 'JKL',
-      coinMinimalDenom: 'ujkl',
-      coinDecimals: 6,
-    },
-    features: [], // Empty features array
-  }
-};
+interface FileMetadata {
+  mimeType?: string;
+  filename?: string;
+  size?: number;
+  providerUrl?: string;
+  // Add more fields based on mount-file.js analysis
+  [key: string]: any;
+}
 
 /**
  * Parse a Jackal Vault share URL into its components
@@ -126,29 +94,104 @@ function getMimeType(metadata: any, filename?: string): string {
 }
 
 /**
- * Main function to fetch and decrypt a Jackal Vault file using Jackal SDK
+ * Fetch file metadata from Jackal Protocol API
+ * Based on mount-file.js metadata fetching logic
+ */
+async function fetchFileMetadata(vaultAddress: string, fileId: string, key: string): Promise<FileMetadata> {
+  try {
+    console.log(`📊 Fetching metadata for ${fileId}...`);
+    
+    // TODO: Implement based on mount-file.js - need the actual API endpoints and request format
+    // Example expectation based on mount-file.js:
+    // const response = await fetch(`https://api.jackalprotocol.com/jackal/storage/files/${fileId}`, {
+    //   headers: { /* auth headers if needed */ }
+    // });
+    
+    // For now, throw with clear placeholder message
+    throw new Error(`[PLACEHOLDER] fetchFileMetadata not implemented - need mount-file.js API call details for metadata. Trying to fetch: ${vaultAddress}/${fileId}`);
+    
+  } catch (error) {
+    throw new Error(`Failed to fetch metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Fetch encrypted file chunks from storage provider
+ * Based on mount-file.js chunk fetching logic
+ */
+async function fetchEncryptedChunks(metadata: FileMetadata, fileId: string): Promise<Uint8Array> {
+  try {
+    console.log('📦 Fetching encrypted chunks...');
+    
+    // TODO: Implement based on mount-file.js - need provider URL and download endpoint
+    // Example expectation:
+    // const response = await fetch(`${metadata.providerUrl}/download/${fileId}`, {
+    //   method: 'GET'
+    // });
+    // const encryptedData = await response.arrayBuffer();
+    // return new Uint8Array(encryptedData);
+    
+    throw new Error(`[PLACEHOLDER] fetchEncryptedChunks not implemented - need mount-file.js provider URL and download logic for ${fileId}`);
+    
+  } catch (error) {
+    throw new Error(`Failed to fetch encrypted chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Decrypt file data using the provided key
+ * Based on mount-file.js crypto logic
+ */
+async function decryptFileData(encryptedData: Uint8Array, key: string, metadata: FileMetadata): Promise<Uint8Array> {
+  try {
+    console.log('🔓 Decrypting file data...');
+    
+    // TODO: Implement based on mount-file.js crypto details:
+    // 1. Key derivation from 'key' parameter
+    // 2. IV/nonce extraction 
+    // 3. Algorithm parameters (AES-GCM, AES-CBC, etc.)
+    // 4. Auth tag handling
+    // 
+    // Example expectation:
+    // const cryptoKey = await subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+    // const decrypted = await subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, cryptoKey, encryptedData);
+    // return new Uint8Array(decrypted);
+    
+    throw new Error(`[PLACEHOLDER] decryptFileData not implemented - need mount-file.js crypto algorithm and key derivation details. Key: ${key.substring(0, 8)}..., Data size: ${encryptedData.length}`);
+    
+  } catch (error) {
+    throw new Error(`Failed to decrypt file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Main function to fetch and decrypt a Jackal Vault file
+ * Manual HTTP + crypto implementation without Jackal SDK
  * 
  * @param vaultUrl - Full Jackal Vault share URL
  * @returns Promise resolving to decrypted file data and MIME type
  */
-export async function fetchAndDecryptVaultFile(vaultUrl: string): Promise<DecryptedFile> {
+export async function fetchAndDecryptVaultFile(vaultUrl: string): Promise<JackalDecryptedFile> {
   try {
     console.log('📥 Parsing vault URL...');
     const { vaultAddress, fileId, key } = parseVaultUrl(vaultUrl);
     
-    // Temporary: Return an error for debugging - Jackal SDK might not work in serverless
-    throw new Error(`Jackal SDK integration not yet working in serverless environment. URL parsed: ${vaultAddress}/${fileId} with key ${key.substring(0, 8)}...`);
+    console.log('📊 Fetching file metadata...');
+    const metadata = await fetchFileMetadata(vaultAddress, fileId, key);
     
-    // TODO: Re-enable once we resolve serverless compatibility
-    /*
-    console.log('🔗 Connecting to Jackal Protocol...');
-    // Initialize Jackal client (read-only, no mnemonic needed for downloads)
-    const client = await ClientHandler.connect(mainnetConfig);
-    const storage = await client.createStorageHandler();
-    await storage.upgradeSigner();
+    console.log('📦 Fetching encrypted chunks...');
+    const encryptedData = await fetchEncryptedChunks(metadata, fileId);
     
-    // ... rest of implementation
-    */
+    console.log('🔓 Decrypting file...');
+    const decryptedData = await decryptFileData(encryptedData, key, metadata);
+    
+    console.log('✅ File decrypted successfully');
+    const mimeType = getMimeType(metadata, metadata.filename);
+    
+    return {
+      mimeType,
+      data: decryptedData
+    };
     
   } catch (error) {
     console.error('❌ Failed to fetch and decrypt vault file:', error);

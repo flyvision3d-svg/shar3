@@ -18,8 +18,10 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
 
   const decodedUrl = decodeURIComponent(imageUrl);
   
-  // Temporary: Disable /raw proxy until serverless compatibility is fixed  
-  const ogImageUrl = decodedUrl;
+  // Use /raw proxy for Jackal URLs (now with manual HTTP + crypto implementation)
+  const ogImageUrl = decodedUrl.includes('vault.jackalprotocol.com') 
+    ? `/raw?u=${encodeURIComponent(decodedUrl)}`
+    : decodedUrl;
   
   return {
     title: "Shar3 - Decentralized Image Share",
