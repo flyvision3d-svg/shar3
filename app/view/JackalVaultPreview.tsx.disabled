@@ -1,3 +1,17 @@
+/*
+ * DISABLED: Client-side Jackal decryption component
+ * 
+ * This component attempts to use jackal.js for browser-based file decryption.
+ * Currently disabled in favor of iframe preview due to RPC connectivity issues.
+ * 
+ * To re-enable:
+ * 1. Rename file back to JackalVaultPreview.tsx
+ * 2. Import in page.tsx: import { JackalVaultPreview } from "./JackalVaultPreview";
+ * 3. Use: <JackalVaultPreview vaultUrl={decodedUrl} />
+ * 
+ * Make sure jackal.js client initialization works first.
+ */
+
 'use client';
 
 import { useState, useEffect } from 'react';

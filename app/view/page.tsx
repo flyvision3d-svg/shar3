@@ -1,6 +1,6 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { JackalVaultPreview } from "./JackalVaultPreview";
+import { JackalVaultIframePreview } from "./JackalVaultIframePreview";
 import { isJackalVaultUrl } from "@/lib/jackal-utils";
 
 interface ViewPageProps {
@@ -26,9 +26,17 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
     ? `${process.env.NEXT_PUBLIC_SITE_URL || 'https://shar3.netlify.app'}/logo.png` // Generic Shar3 logo
     : decodedUrl;
   
+  const title = isJackalVaultUrl(decodedUrl)
+    ? "Shar3 - Jackal Vault File"
+    : "Shar3 - Decentralized Image Share";
+    
+  const description = isJackalVaultUrl(decodedUrl)
+    ? "Encrypted file shared via Jackal Protocol - view with Shar3 preview"
+    : "Image shared via Shar3 decentralized preview wrapper";
+    
   return {
-    title: "Shar3 - Decentralized Image Share",
-    description: "Image shared via Shar3 decentralized preview wrapper",
+    title,
+    description,
     openGraph: {
       title: "Shared via Shar3",
       description: "Decentralized image sharing with instant previews",
@@ -76,8 +84,8 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
         <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg p-6">
           <div className="aspect-auto max-w-full mx-auto">
             {isJackalVaultUrl(decodedUrl) ? (
-              // Client-side Jackal decryption
-              <JackalVaultPreview vaultUrl={decodedUrl} />
+              // Iframe-based Jackal preview 
+              <JackalVaultIframePreview vaultUrl={decodedUrl} />
             ) : (
               // Regular image display
               <img
