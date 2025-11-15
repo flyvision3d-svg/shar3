@@ -3,9 +3,7 @@
 import { useState, useEffect } from 'react';
 import { parseVaultUrl } from '@/lib/jackal-utils';
 
-// Import jackal.js types and functions  
-// Based on mount-file.js pattern
-// @ts-ignore - Temporarily ignore type issues for jackal.js setup
+// Import jackal.js - using only what's needed for client-side
 import { ClientHandler } from '@jackallabs/jackal.js';
 
 interface FileMeta {
@@ -22,8 +20,8 @@ interface JackalClient {
 let jackalClientPromise: Promise<JackalClient> | null = null;
 
 /**
- * Initialize Jackal client (singleton pattern)
- * Based on mount-file.js implementation
+ * Initialize Jackal client using default mainnet configuration
+ * No overrides - let jackal.js decide the endpoints
  */
 async function getJackalClient(): Promise<JackalClient> {
   if (!jackalClientPromise) {
@@ -31,30 +29,28 @@ async function getJackalClient(): Promise<JackalClient> {
       try {
         console.log('🦎 Initializing Jackal client...');
         
-        // Use basic mainnet configuration for read-only access
-        // @ts-ignore - Temporary workaround for jackal.js types
+        // Use minimal configuration - let jackal.js handle defaults
         const details = {
-          selectedWallet: 'mnemonic',
-          // Use read-only mnemonic for public file access  
+          selectedWallet: 'mnemonic' as const,
+          // Use the same read-only mnemonic pattern as mount-file.js
           mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
         };
 
-        console.log('🔗 Connecting to Jackal Protocol...');
-        // @ts-ignore - Temporary workaround for jackal.js type compatibility
+        console.log('JACKAL_CLIENT_SETUP', details);
+        
         const client = await ClientHandler.connect(details);
-        
-        console.log('📦 Creating storage handler...');
         const storage = await client.createStorageHandler();
-        
-        console.log('🔧 Upgrading signer...');
         await storage.upgradeSigner();
         
-        console.log('✅ Jackal client ready');
+        console.log('JACKAL_CLIENT_READY');
         return { storage };
         
-      } catch (error) {
-        console.error('❌ Failed to initialize Jackal client:', error);
-        throw new Error(`Failed to initialize Jackal client: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } catch (err) {
+        console.error('JACKAL_CLIENT_ERROR', err);
+        throw new Error(
+          'Failed to initialize Jackal client: ' +
+            (err instanceof Error ? err.message : String(err))
+        );
       }
     })();
   }
@@ -124,12 +120,16 @@ export function JackalVaultPreview({ vaultUrl }: JackalVaultPreviewProps) {
 
         if (cancelled) return;
 
-        console.log('✅ File downloaded, creating preview...');
+        console.log('✅ File downloaded, creating preview...', { 
+          blobSize: fileBlob.size,
+          blobType: fileBlob.type 
+        });
+        
         objectUrl = URL.createObjectURL(fileBlob);
         setPreviewUrl(objectUrl);
         setMeta({
           name: fileMeta.name || 'Unknown file',
-          type: fileMeta.type || 'application/octet-stream',
+          type: fileMeta.type || fileBlob.type || 'application/octet-stream',
           size: fileMeta.size || fileBlob.size || 0,
         });
 
@@ -186,9 +186,20 @@ export function JackalVaultPreview({ vaultUrl }: JackalVaultPreviewProps) {
         <h3 className="text-xl font-semibold text-red-600 dark:text-red-400 mb-3">
           Decryption Failed
         </h3>
-        <p className="text-zinc-600 dark:text-zinc-400 mb-6 max-w-md mx-auto">
-          {error}
-        </p>
+        <div className="max-w-md mx-auto mb-6">
+          <p className="text-zinc-600 dark:text-zinc-400 mb-4">
+            {error}
+          </p>
+          <details className="text-left">
+            <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-500">
+              Show debug info
+            </summary>
+            <div className="mt-2 p-3 bg-zinc-100 dark:bg-zinc-800 rounded text-xs font-mono">
+              <div>URL: {vaultUrl}</div>
+              <div>Check browser console for JACKAL_CLIENT_ERROR details</div>
+            </div>
+          </details>
+        </div>
         <p className="text-sm text-zinc-500 dark:text-zinc-500">
           This may be due to an invalid link, expired access, or network issues.
         </p>

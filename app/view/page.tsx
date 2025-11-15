@@ -1,6 +1,6 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { JackalVaultPreview } from "@/components/JackalVaultPreview";
+import { JackalVaultPreview } from "./JackalVaultPreview";
 import { isJackalVaultUrl } from "@/lib/jackal-utils";
 
 interface ViewPageProps {
@@ -20,9 +20,10 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
 
   const decodedUrl = decodeURIComponent(imageUrl);
   
-  // Use /raw proxy for Jackal URLs (now with manual HTTP + crypto implementation)
+  // For Jackal URLs, use a generic image since they're decrypted client-side
+  // Social media crawlers won't be able to decrypt these files
   const ogImageUrl = isJackalVaultUrl(decodedUrl)
-    ? `/raw?u=${encodeURIComponent(decodedUrl)}`
+    ? `${process.env.NEXT_PUBLIC_SITE_URL || 'https://shar3.netlify.app'}/logo.png` // Generic Shar3 logo
     : decodedUrl;
   
   return {
