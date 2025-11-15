@@ -1,5 +1,7 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { JackalVaultPreview } from "@/components/JackalVaultPreview";
+import { isJackalVaultUrl } from "@/lib/jackal-utils";
 
 interface ViewPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -19,7 +21,7 @@ export async function generateMetadata({ searchParams }: ViewPageProps): Promise
   const decodedUrl = decodeURIComponent(imageUrl);
   
   // Use /raw proxy for Jackal URLs (now with manual HTTP + crypto implementation)
-  const ogImageUrl = decodedUrl.includes('vault.jackalprotocol.com') 
+  const ogImageUrl = isJackalVaultUrl(decodedUrl)
     ? `/raw?u=${encodeURIComponent(decodedUrl)}`
     : decodedUrl;
   
@@ -72,20 +74,9 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
         
         <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg p-6">
           <div className="aspect-auto max-w-full mx-auto">
-            {decodedUrl.includes('vault.jackalprotocol.com') ? (
-              // Temporary: Show message instead of broken proxy
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">🦎</div>
-                <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
-                  Jackal Protocol Image
-                </h3>
-                <p className="text-zinc-600 dark:text-zinc-400 mb-6 max-w-md mx-auto">
-                  Server-side decryption is being implemented. For now, use the link below to view the image.
-                </p>
-                <p className="text-sm text-blue-600 mb-4">
-                  Social media previews for Jackal images coming soon!
-                </p>
-              </div>
+            {isJackalVaultUrl(decodedUrl) ? (
+              // Client-side Jackal decryption
+              <JackalVaultPreview vaultUrl={decodedUrl} />
             ) : (
               // Regular image display
               <img
@@ -125,7 +116,7 @@ export default async function ViewPage({ searchParams }: ViewPageProps) {
                 rel="noopener noreferrer"
                 className="px-6 py-2 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg transition-colors"
               >
-                {decodedUrl.includes('vault.jackalprotocol.com') ? 'View on Jackal Vault' : 'View Original'}
+                {isJackalVaultUrl(decodedUrl) ? 'View on Jackal Vault' : 'View Original'}
               </a>
             </div>
           </div>

@@ -1,0 +1,277 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { parseVaultUrl } from '@/lib/jackal-utils';
+
+// Import jackal.js types and functions  
+// Based on mount-file.js pattern
+// @ts-ignore - Temporarily ignore type issues for jackal.js setup
+import { ClientHandler } from '@jackallabs/jackal.js';
+
+interface FileMeta {
+  name: string;
+  type: string;
+  size: number;
+}
+
+interface JackalClient {
+  storage: any;
+}
+
+// Singleton client promise to avoid re-initialization
+let jackalClientPromise: Promise<JackalClient> | null = null;
+
+/**
+ * Initialize Jackal client (singleton pattern)
+ * Based on mount-file.js implementation
+ */
+async function getJackalClient(): Promise<JackalClient> {
+  if (!jackalClientPromise) {
+    jackalClientPromise = (async () => {
+      try {
+        console.log('🦎 Initializing Jackal client...');
+        
+        // Use basic mainnet configuration for read-only access
+        // @ts-ignore - Temporary workaround for jackal.js types
+        const details = {
+          selectedWallet: 'mnemonic',
+          // Use read-only mnemonic for public file access  
+          mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+        };
+
+        console.log('🔗 Connecting to Jackal Protocol...');
+        // @ts-ignore - Temporary workaround for jackal.js type compatibility
+        const client = await ClientHandler.connect(details);
+        
+        console.log('📦 Creating storage handler...');
+        const storage = await client.createStorageHandler();
+        
+        console.log('🔧 Upgrading signer...');
+        await storage.upgradeSigner();
+        
+        console.log('✅ Jackal client ready');
+        return { storage };
+        
+      } catch (error) {
+        console.error('❌ Failed to initialize Jackal client:', error);
+        throw new Error(`Failed to initialize Jackal client: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    })();
+  }
+  
+  return jackalClientPromise;
+}
+
+export interface JackalVaultPreviewProps {
+  vaultUrl: string;
+}
+
+export function JackalVaultPreview({ vaultUrl }: JackalVaultPreviewProps) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [meta, setMeta] = useState<FileMeta | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        console.log('🔍 Parsing Vault URL...');
+        const { address, ulid, linkKey } = parseVaultUrl(vaultUrl);
+        
+        console.log('📊 Vault components:', { 
+          address: address.substring(0, 10) + '...', 
+          ulid, 
+          linkKey: linkKey.substring(0, 8) + '...' 
+        });
+
+        console.log('🦎 Getting Jackal client...');
+        const { storage } = await getJackalClient();
+
+        if (cancelled) return;
+
+        console.log('📄 Fetching file metadata...');
+        const metaReq = { ulid, userAddress: address, linkKey };
+        const metadata = await storage.getMetaDataByUlid(metaReq);
+
+        if (cancelled) return;
+
+        console.log('📋 Metadata response:', metadata);
+
+        if (metadata.metaDataType !== 'file') {
+          throw new Error('Vault URL points to a folder, not a file.');
+        }
+
+        const fileMeta = metadata.fileMeta;
+        if (!fileMeta) {
+          throw new Error('No file metadata found in response.');
+        }
+
+        console.log('📦 Downloading file...');
+        const downloadOptions = {
+          ulid,
+          linkKey,
+          trackers: { chunks: [], progress: 0 },
+          userAddress: address,
+        };
+
+        const fileBlob = await storage.downloadByUlid(downloadOptions);
+
+        if (cancelled) return;
+
+        console.log('✅ File downloaded, creating preview...');
+        objectUrl = URL.createObjectURL(fileBlob);
+        setPreviewUrl(objectUrl);
+        setMeta({
+          name: fileMeta.name || 'Unknown file',
+          type: fileMeta.type || 'application/octet-stream',
+          size: fileMeta.size || fileBlob.size || 0,
+        });
+
+        console.log('🎉 Preview ready');
+
+      } catch (err) {
+        if (!cancelled) {
+          console.error('❌ Preview error:', err);
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    load();
+
+    // Cleanup function
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [vaultUrl]);
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-6xl mb-4">🦎</div>
+        <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
+          Decrypting Jackal File
+        </h3>
+        <p className="text-zinc-600 dark:text-zinc-400 mb-6">
+          Connecting to Jackal Protocol and decrypting your file...
+        </p>
+        <div className="inline-flex items-center px-4 py-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="text-blue-600 dark:text-blue-400">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-6xl mb-4">⚠️</div>
+        <h3 className="text-xl font-semibold text-red-600 dark:text-red-400 mb-3">
+          Decryption Failed
+        </h3>
+        <p className="text-zinc-600 dark:text-zinc-400 mb-6 max-w-md mx-auto">
+          {error}
+        </p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-500">
+          This may be due to an invalid link, expired access, or network issues.
+        </p>
+      </div>
+    );
+  }
+
+  if (!previewUrl || !meta) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-6xl mb-4">❓</div>
+        <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
+          No Preview Available
+        </h3>
+        <p className="text-zinc-600 dark:text-zinc-400">
+          File was decrypted but preview could not be generated.
+        </p>
+      </div>
+    );
+  }
+
+  // Determine if it's an image
+  const isImage = meta.type.startsWith('image/');
+
+  return (
+    <div className="space-y-4">
+      {isImage ? (
+        <div className="text-center">
+          <img
+            src={previewUrl}
+            alt={meta.name}
+            className="max-h-[500px] max-w-full rounded-lg mx-auto shadow-lg"
+            style={{ objectFit: 'contain' }}
+          />
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+          <div className="text-6xl mb-4">📄</div>
+          <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
+            File Ready for Download
+          </h3>
+          <p className="text-zinc-600 dark:text-zinc-400 mb-6">
+            This file type cannot be previewed in the browser, but you can download it.
+          </p>
+          <a
+            href={previewUrl}
+            download={meta.name}
+            className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download {meta.name}
+          </a>
+        </div>
+      )}
+      
+      {/* File metadata */}
+      <div className="bg-zinc-50 dark:bg-zinc-800 rounded-lg p-4">
+        <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
+          File Information
+        </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+          <div>
+            <span className="text-zinc-500 dark:text-zinc-400">Name:</span>
+            <div className="font-mono text-zinc-900 dark:text-zinc-100 break-all">
+              {meta.name}
+            </div>
+          </div>
+          <div>
+            <span className="text-zinc-500 dark:text-zinc-400">Type:</span>
+            <div className="font-mono text-zinc-900 dark:text-zinc-100">
+              {meta.type}
+            </div>
+          </div>
+          <div>
+            <span className="text-zinc-500 dark:text-zinc-400">Size:</span>
+            <div className="font-mono text-zinc-900 dark:text-zinc-100">
+              {(meta.size / 1024).toFixed(1)} KB
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
